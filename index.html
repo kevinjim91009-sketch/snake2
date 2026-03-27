@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>經典貪吃蛇 - 點擊即玩版</title>
+    <style>
+        body { 
+            background: #111; color: white; text-align: center; 
+            font-family: 'Microsoft JhengHei', Arial, sans-serif; margin: 0; 
+            display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh;
+            overflow: hidden; /* 防止手機或網頁捲動 */
+        }
+        .stats { font-size: 24px; margin-bottom: 15px; color: #2ecc71; font-weight: bold; text-shadow: 0 0 10px rgba(46,204,113,0.5); }
+        #game-container { position: relative; border: 5px solid #444; background: #000; box-shadow: 0 0 30px rgba(0,0,0,0.5); }
+        canvas { display: block; }
+        /* 覆蓋層：確保按鈕在最前面 */
+        #overlay {
+            position: absolute; top: 0; left: 0; width: 400px; height: 400px;
+            background: rgba(0, 0, 0, 0.9); display: flex; flex-direction: column;
+            justify-content: center; align-items: center; z-index: 100;
+        }
+        .btn {
+            background: #2ecc71; color: white; padding: 18px 50px; border: none;
+            border-radius: 50px; font-size: 22px; font-weight: bold; cursor: pointer;
+            transition: 0.3s; box-shadow: 0 4px 15px rgba(46,204,113,0.4);
+        }
+        .btn:hover { background: #27ae60; transform: scale(1.1); }
+        .hint { margin-top: 20px; color: #aaa; font-size: 14px; line-height: 1.6; }
+    </style>
+</head>
+<body>
+
+    <div class="stats">得分: <span id="score">0</span> | 剩餘時間: <span id="timer">60</span>s</div>
+
+    <div id="game-container">
+        <div id="overlay">
+            <h1 id="status-text" style="color:#2ecc71; margin-bottom: 10px;">貪吃蛇</h1>
+            <p style="margin-bottom: 20px;">🍏+5秒 | 🪙+3分 | 🔵縮短 | 💣結束</p>
+            <button class="btn" id="startBtn">開始遊戲</button>
+            <div class="hint">使用方向鍵 (↑↓←→) 或 WASD 控制<br>撞牆會穿過去，撞到自己會結束</div>
+        </div>
+        <canvas id="snakeCanvas" width="400" height="400"></canvas>
+    </div>
+
+    <script>
+        const canvas = document.getElementById("snakeCanvas");
+        const ctx = canvas.getContext("2d");
+        const startBtn = document.getElementById("startBtn");
+        const overlay = document.getElementById("overlay");
+        const scoreDisp = document.getElementById("score");
+        const timerDisp = document.getElementById("timer");
+        const statusText = document.getElementById("status-text");
+
+        const box = 20;
+        let snake, food, gold, special, score, timeLeft, direction, nextDir, gameInt, timeInt;
+        let isPlaying = false;
+
+        // 核心啟動邏輯
+        function resetGame() {
+            isPlaying = true;
+            overlay.style.display = "none";
+            
+            // 初始化數據
+            snake = [{x: 10 * box, y: 10 * box}, {x: 9 * box, y: 10 * box}];
+            direction = "RIGHT";
+            nextDir = "RIGHT";
+            score = 0;
+            timeLeft = 60;
+            special = null;
+            gold = null;
+            
+            scoreDisp.innerText = score;
+            timerDisp.innerText = timeLeft;
+
+            // 清除舊計時器
+            clearInterval(gameInt);
+            clearInterval(timeInt);
+
+            spawnFood();
+            gameInt = setInterval(draw, 100); // 100ms 跑一格
+            timeInt = setInterval(tick, 1000); // 每一秒扣時間
+            
+            // 強制聚焦到視窗，確保鍵盤立刻可用
+            window.focus();
+        }
+
+        startBtn.addEventListener("click", (e) => {
+            e.preventDefault();
+            resetGame();
+        });
+
+        function tick() {
+            if (!isPlaying) return;
+            timeLeft--;
+            timerDisp.innerText = timeLeft;
+            if(timeLeft <= 0) gameOver("時間到！");
+        }
+
+        function spawnFood() {
+            food = { x: Math.floor(Math.random()*20)*box, y: Math.floor(Math.random()*20)*box };
+            gold = Math.random() < 0.3 ? { x: Math.floor(Math.random()*20)*box, y: Math.floor(Math.random()*20)*box } : null;
+            special = Math.random() < 0.4 ? { 
+                x: Math.floor(Math.random()*20)*box, 
+                y: Math.floor(Math.random()*20)*box, 
+                type: Math.random() > 0.5 ? "shrink" : "bomb" 
+            } : null;
+        }
+
+        // 鍵盤監聽（支援 WASD 與 方向鍵）
+        document.addEventListener("keydown", function(e) {
+            const key = e.keyCode;
+            // 阻斷瀏覽器預設捲動行為
+            if([32, 37, 38, 39, 40].includes(key)) e.preventDefault();
+
+            if(!isPlaying) return;
+
+            if((key == 37 || key == 65) && direction != "RIGHT") nextDir = "LEFT";
+            else if((key == 38 || key == 87) && direction != "DOWN") nextDir = "UP";
+            else if((key == 39 || key == 68) && direction != "LEFT") nextDir = "RIGHT";
+            else if((key == 40 || key == 83) && direction != "UP") nextDir = "DOWN";
+        });
+
+        function gameOver(txt) {
+            isPlaying = false;
+            clearInterval(gameInt);
+            clearInterval(timeInt);
+            statusText.innerText = txt;
+            statusText.style.color = "#ff4757";
+            startBtn.innerText = "再玩一次";
+            overlay.style.display = "flex";
+        }
+
+        function draw() {
+            direction = nextDir;
+            ctx.fillStyle = "black";
+            ctx.fillRect(0, 0, 400, 400);
+
+            // 畫蛇
+            snake.forEach((s, i) => {
+                ctx.fillStyle = (i === 0) ? "#2ecc71" : "#27ae60";
+                ctx.fillRect(s.x, s.y, box-1, box-1); // 減1是為了畫出格子感
+            });
+
+            // 畫物品
+            ctx.font = "16px Arial";
+            ctx.fillText("🍏", food.x, food.y + 15);
+            if(gold) ctx.fillText("🪙", gold.x, gold.y + 15);
+            if(special) ctx.fillText(special.type=="shrink"?"🔵":"💣", special.x, special.y + 15);
+
+            let headX = snake[0].x;
+            let headY = snake[0].y;
+
+            if(direction == "LEFT") headX -= box;
+            else if(direction == "UP") headY -= box;
+            else if(direction == "RIGHT") headX += box;
+            else if(direction == "DOWN") headY += box;
+
+            // 穿牆判定
+            if(headX < 0) headX = 380; else if(headX >= 400) headX = 0;
+            if(headY < 0) headY = 380; else if(headY >= 400) headY = 0;
+
+            // 撞身判定
+            for(let i=1; i<snake.length; i++) {
+                if(headX == snake[i].x && headY == snake[i].y) {
+                    gameOver("咬到自己了！");
+                    return;
+                }
+            }
+
+            let newHead = {x: headX, y: headY};
+
+            // 吃到物品判定
+            if(headX == food.x && headY == food.y) {
+                score++;
+                timeLeft += 5;
+                scoreDisp.innerText = score;
+                spawnFood();
+            } else if(gold && headX == gold.x && headY == gold.y) {
+                score += 3;
+                scoreDisp.innerText = score;
+                gold = null;
+            } else if(special && headX == special.x && headY == special.y) {
+                if(special.type == "shrink") {
+                    if(snake.length > 2) snake.pop();
+                    timeLeft += 10;
+                    special = null;
+                } else {
+                    gameOver("炸彈爆炸！");
+                    return;
+                }
+                snake.pop(); // 這是移動需要的 pop
+            } else {
+                snake.pop(); // 正常移動
+            }
+            snake.unshift(newHead);
+        }
+    </script>
+</body>
+</html>
